@@ -1,3 +1,4 @@
+```jsx
 import './App.css';
 
 function App() {
@@ -21,7 +22,9 @@ function App() {
 
       <main className="sanity-content">
         <div className="sanity-card">
-          <div className="sanity-card-icon">S</div>
+          <div className="sanity-card-icon">
+            S
+          </div>
 
           <div className="sanity-card-content">
             <h2>Sanity Content</h2>
@@ -47,3 +50,4 @@ function App() {
 }
 
 export default App;
+```
