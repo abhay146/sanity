@@ -11,47 +11,45 @@ function App() {
     analyzeCurrentPage();
   }, []);
 
-  async function analyzeCurrentPage() {
+  function getCurrentPageDocument() {
+    // The AEM page is the parent window when the plugin
+    // is opened as a Sidekick popover.
+    try {
+      if (window.parent && window.parent !== window) {
+        return {
+          document: window.parent.document,
+          url: window.parent.location.href,
+        };
+      }
+
+      return {
+        document: window.document,
+        url: window.location.href,
+      };
+    } catch (error) {
+      console.error('Unable to access parent AEM page:', error);
+
+      throw new Error(
+        'Sanity could not access the current AEM page. Please make sure the Sanity plugin is opened from the AEM Sidekick.'
+      );
+    }
+  }
+
+  function analyzeCurrentPage() {
     setLoading(true);
     setError('');
+    setResults(null);
 
     try {
-      // Get current AEM page URL from query parameter
-      const params = new URLSearchParams(window.location.search);
+      const page = getCurrentPageDocument();
 
-      let currentPageUrl = params.get('url');
-
-      // Fallback: try Sidekick context if available
-      // if (!currentPageUrl && window.parent !== window) {
-      //   currentPageUrl = document.referrer;
-      // }
-      if (!currentPageUrl) {
-  currentPageUrl = document.referrer;
-}
-
-      if (!currentPageUrl) {
-        throw new Error('Current AEM page URL could not be detected.');
+      if (!page.document) {
+        throw new Error('Current AEM page could not be detected.');
       }
 
-      setPageUrl(currentPageUrl);
+      setPageUrl(page.url);
 
-      // Fetch the current AEM page
-      const response = await fetch(currentPageUrl);
-
-      if (!response.ok) {
-        throw new Error(
-          `Unable to load page. Server returned ${response.status}.`
-        );
-      }
-
-      const html = await response.text();
-
-      // Convert HTML string into DOM
-      const parser = new DOMParser();
-      const pageDocument = parser.parseFromString(html, 'text/html');
-
-      // Run all checks
-      const pageResults = runChecks(pageDocument);
+      const pageResults = runChecks(page.document);
 
       setResults(pageResults);
     } catch (err) {
@@ -63,10 +61,16 @@ function App() {
   }
 
   function runChecks(pageDocument) {
-    // H1 check
+    // -------------------------
+    // H1 CHECK
+    // -------------------------
+
     const h1s = [...pageDocument.querySelectorAll('h1')];
 
-    // Image ALT check
+    // -------------------------
+    // IMAGE ALT CHECK
+    // -------------------------
+
     const images = [...pageDocument.querySelectorAll('img')];
 
     const imagesWithoutAlt = images.filter((img) => {
@@ -75,7 +79,10 @@ function App() {
       return alt === null || alt.trim() === '';
     });
 
-    // Links check
+    // -------------------------
+    // LINK CHECK
+    // -------------------------
+
     const links = [...pageDocument.querySelectorAll('a[href]')];
 
     const linksWithoutText = links.filter((link) => {
@@ -86,84 +93,140 @@ function App() {
       return !text && !hasImage;
     });
 
-    // Heading structure
+    // -------------------------
+    // HEADINGS CHECK
+    // -------------------------
+
     const headings = [
-      ...pageDocument.querySelectorAll('h1, h2, h3, h4, h5, h6'),
+      ...pageDocument.querySelectorAll(
+        'h1, h2, h3, h4, h5, h6'
+      ),
     ];
 
-    // Meta description
+    // -------------------------
+    // TITLE CHECK
+    // -------------------------
+
+    const title = pageDocument.querySelector('title');
+
+    // -------------------------
+    // META DESCRIPTION CHECK
+    // -------------------------
+
     const metaDescription = pageDocument.querySelector(
       'meta[name="description"]'
     );
 
-    // Title
-    const title = pageDocument.querySelector('title');
+    // -------------------------
+    // RETURN RESULTS
+    // -------------------------
 
     return {
       h1Count: h1s.length,
-      h1Text: h1s.map((h1) => h1.textContent.trim()),
+
+      h1Text: h1s.map((h1) =>
+        h1.textContent.trim()
+      ),
 
       imageCount: images.length,
-      imagesWithoutAlt: imagesWithoutAlt.length,
+
+      imagesWithoutAlt:
+        imagesWithoutAlt.length,
 
       linkCount: links.length,
-      linksWithoutText: linksWithoutText.length,
+
+      linksWithoutText:
+        linksWithoutText.length,
 
       headingCount: headings.length,
 
+      hasTitle:
+        !!title &&
+        title.textContent.trim().length > 0,
+
       hasMetaDescription:
         !!metaDescription &&
-        metaDescription.getAttribute('content')?.trim().length > 0,
-
-      hasTitle: !!title && title.textContent.trim().length > 0,
+        metaDescription
+          .getAttribute('content')
+          ?.trim().length > 0,
     };
   }
 
-  function getStatus(count) {
-    return count === 0 ? 'success' : 'warning';
+  function closeSanity() {
+    window.parent.postMessage(
+      {
+        type: 'sanity-close',
+      },
+      '*'
+    );
   }
 
   return (
     <div className="sanity-app">
+
+      {/* HEADER */}
+
       <header className="sanity-header">
+
         <div>
           <h1>Sanity</h1>
-          <p>Page Quality Checker</p>
+
+          <p>
+            AEM Page Quality Checker
+          </p>
         </div>
 
         <button
           type="button"
           className="close-button"
           aria-label="Close"
-          onClick={() =>
-            window.parent.postMessage(
-              {
-                type: 'sanity-close',
-              },
-              '*'
-            )
-          }
+          onClick={closeSanity}
         >
           ×
         </button>
+
       </header>
 
+
+      {/* CONTENT */}
+
       <main className="sanity-content">
+
+        {/* LOADING */}
+
         {loading && (
           <div className="state-card">
-            <div className="loader" />
-            <h2>Checking page...</h2>
-            <p>Sanity is analyzing the current AEM page.</p>
+
+            <div className="loader"></div>
+
+            <h2>
+              Checking page...
+            </h2>
+
+            <p>
+              Sanity is analyzing the current AEM page.
+            </p>
+
           </div>
         )}
 
+
+        {/* ERROR */}
+
         {!loading && error && (
           <div className="state-card error-card">
-            <div className="status-icon">!</div>
 
-            <h2>Unable to check page</h2>
+            <div className="status-icon">
+              !
+            </div>
 
-            <p>{error}</p>
+            <h2>
+              Unable to check page
+            </h2>
+
+            <p>
+              {error}
+            </p>
 
             <button
               type="button"
@@ -172,162 +235,266 @@ function App() {
             >
               Try Again
             </button>
+
           </div>
         )}
 
-        {!loading && !error && results && (
-          <>
-            <div className="page-info">
-              <span className="page-info-label">Checking page</span>
 
-              <a
-                href={pageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="page-url"
-              >
-                {pageUrl}
-              </a>
-            </div>
+        {/* RESULTS */}
 
-            <section className="results-section">
-              <h2>Page Checks</h2>
+        {!loading &&
+          !error &&
+          results && (
+            <>
 
-              {/* H1 */}
-              <div className={`check-card ${getStatus(results.h1Count)}`}>
-                <div className="check-icon">
-                  {results.h1Count === 1 ? '✓' : '!'}
+              {/* CURRENT PAGE */}
+
+              <div className="page-info">
+
+                <span className="page-info-label">
+                  Checking page
+                </span>
+
+                <div className="page-url">
+                  {pageUrl}
                 </div>
 
-                <div className="check-content">
-                  <h3>H1 Heading</h3>
+              </div>
 
-                  <p>
+
+              {/* CHECKS */}
+
+              <section className="results-section">
+
+                <h2>
+                  Page Checks
+                </h2>
+
+
+                {/* H1 */}
+
+                <div
+                  className={`check-card ${
+                    results.h1Count === 1
+                      ? 'success'
+                      : 'warning'
+                  }`}
+                >
+
+                  <div className="check-icon">
                     {results.h1Count === 1
-                      ? 'Page has exactly one H1 heading.'
-                      : `Page has ${results.h1Count} H1 headings.`}
-                  </p>
+                      ? '✓'
+                      : '!'}
+                  </div>
 
-                  {results.h1Text.length > 0 && (
-                    <div className="details">
-                      {results.h1Text.map((text, index) => (
-                        <div key={index} className="detail-item">
-                          H1 {index + 1}: {text}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className="check-content">
+
+                    <h3>
+                      H1 Heading
+                    </h3>
+
+                    <p>
+                      {results.h1Count === 1
+                        ? 'Page has exactly one H1 heading.'
+                        : `Page has ${results.h1Count} H1 headings.`}
+                    </p>
+
+                    {results.h1Text.length > 0 && (
+                      <div className="details">
+
+                        {results.h1Text.map(
+                          (text, index) => (
+                            <div
+                              key={index}
+                              className="detail-item"
+                            >
+                              H1 {index + 1}:{' '}
+                              {text}
+                            </div>
+                          )
+                        )}
+
+                      </div>
+                    )}
+
+                  </div>
+
                 </div>
-              </div>
 
-              {/* Image ALT */}
-              <div
-                className={`check-card ${
-                  results.imagesWithoutAlt === 0 ? 'success' : 'warning'
-                }`}
-              >
-                <div className="check-icon">
-                  {results.imagesWithoutAlt === 0 ? '✓' : '!'}
-                </div>
 
-                <div className="check-content">
-                  <h3>Image ALT Text</h3>
+                {/* IMAGE ALT */}
 
-                  <p>
+                <div
+                  className={`check-card ${
+                    results.imagesWithoutAlt === 0
+                      ? 'success'
+                      : 'warning'
+                  }`}
+                >
+
+                  <div className="check-icon">
                     {results.imagesWithoutAlt === 0
-                      ? `All ${results.imageCount} images have ALT text.`
-                      : `${results.imagesWithoutAlt} of ${results.imageCount} images are missing ALT text.`}
-                  </p>
+                      ? '✓'
+                      : '!'}
+                  </div>
+
+                  <div className="check-content">
+
+                    <h3>
+                      Image ALT Text
+                    </h3>
+
+                    <p>
+                      {results.imagesWithoutAlt === 0
+                        ? `All ${results.imageCount} images have ALT text.`
+                        : `${results.imagesWithoutAlt} of ${results.imageCount} images are missing ALT text.`}
+                    </p>
+
+                  </div>
+
                 </div>
-              </div>
 
-              {/* Links */}
-              <div
-                className={`check-card ${
-                  results.linksWithoutText === 0 ? 'success' : 'warning'
-                }`}
-              >
-                <div className="check-icon">
-                  {results.linksWithoutText === 0 ? '✓' : '!'}
-                </div>
 
-                <div className="check-content">
-                  <h3>Link Text</h3>
+                {/* LINKS */}
 
-                  <p>
+                <div
+                  className={`check-card ${
+                    results.linksWithoutText === 0
+                      ? 'success'
+                      : 'warning'
+                  }`}
+                >
+
+                  <div className="check-icon">
                     {results.linksWithoutText === 0
-                      ? `All ${results.linkCount} links have accessible text.`
-                      : `${results.linksWithoutText} links may be missing accessible text.`}
-                  </p>
+                      ? '✓'
+                      : '!'}
+                  </div>
+
+                  <div className="check-content">
+
+                    <h3>
+                      Link Text
+                    </h3>
+
+                    <p>
+                      {results.linksWithoutText === 0
+                        ? `All ${results.linkCount} links have accessible text.`
+                        : `${results.linksWithoutText} links may be missing accessible text.`}
+                    </p>
+
+                  </div>
+
                 </div>
-              </div>
 
-              {/* Title */}
-              <div
-                className={`check-card ${
-                  results.hasTitle ? 'success' : 'warning'
-                }`}
-              >
-                <div className="check-icon">
-                  {results.hasTitle ? '✓' : '!'}
-                </div>
 
-                <div className="check-content">
-                  <h3>Page Title</h3>
+                {/* TITLE */}
 
-                  <p>
+                <div
+                  className={`check-card ${
+                    results.hasTitle
+                      ? 'success'
+                      : 'warning'
+                  }`}
+                >
+
+                  <div className="check-icon">
                     {results.hasTitle
-                      ? 'Page has a title.'
-                      : 'Page title is missing.'}
-                  </p>
+                      ? '✓'
+                      : '!'}
+                  </div>
+
+                  <div className="check-content">
+
+                    <h3>
+                      Page Title
+                    </h3>
+
+                    <p>
+                      {results.hasTitle
+                        ? 'Page has a title.'
+                        : 'Page title is missing.'}
+                    </p>
+
+                  </div>
+
                 </div>
-              </div>
 
-              {/* Meta Description */}
-              <div
-                className={`check-card ${
-                  results.hasMetaDescription ? 'success' : 'warning'
-                }`}
-              >
-                <div className="check-icon">
-                  {results.hasMetaDescription ? '✓' : '!'}
-                </div>
 
-                <div className="check-content">
-                  <h3>Meta Description</h3>
+                {/* META DESCRIPTION */}
 
-                  <p>
+                <div
+                  className={`check-card ${
+                    results.hasMetaDescription
+                      ? 'success'
+                      : 'warning'
+                  }`}
+                >
+
+                  <div className="check-icon">
                     {results.hasMetaDescription
-                      ? 'Meta description is present.'
-                      : 'Meta description is missing.'}
-                  </p>
+                      ? '✓'
+                      : '!'}
+                  </div>
+
+                  <div className="check-content">
+
+                    <h3>
+                      Meta Description
+                    </h3>
+
+                    <p>
+                      {results.hasMetaDescription
+                        ? 'Meta description is present.'
+                        : 'Meta description is missing.'}
+                    </p>
+
+                  </div>
+
                 </div>
-              </div>
 
-              {/* Headings */}
-              <div className="check-card success">
-                <div className="check-icon">✓</div>
 
-                <div className="check-content">
-                  <h3>Headings</h3>
+                {/* HEADINGS */}
 
-                  <p>
-                    {results.headingCount} headings found on this page.
-                  </p>
+                <div className="check-card success">
+
+                  <div className="check-icon">
+                    ✓
+                  </div>
+
+                  <div className="check-content">
+
+                    <h3>
+                      Headings
+                    </h3>
+
+                    <p>
+                      {results.headingCount}{' '}
+                      headings found on this page.
+                    </p>
+
+                  </div>
+
                 </div>
-              </div>
-            </section>
 
-            <button
-              type="button"
-              className="refresh-button"
-              onClick={analyzeCurrentPage}
-            >
-              ↻ Run Check Again
-            </button>
-          </>
-        )}
+              </section>
+
+
+              {/* REFRESH */}
+
+              <button
+                type="button"
+                className="refresh-button"
+                onClick={analyzeCurrentPage}
+              >
+                ↻ Run Check Again
+              </button>
+
+            </>
+          )}
+
       </main>
+
     </div>
   );
 }
