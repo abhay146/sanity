@@ -22,9 +22,12 @@ function App() {
       let currentPageUrl = params.get('url');
 
       // Fallback: try Sidekick context if available
-      if (!currentPageUrl && window.parent !== window) {
-        currentPageUrl = document.referrer;
-      }
+      // if (!currentPageUrl && window.parent !== window) {
+      //   currentPageUrl = document.referrer;
+      // }
+      if (!currentPageUrl) {
+  currentPageUrl = document.referrer;
+}
 
       if (!currentPageUrl) {
         throw new Error('Current AEM page URL could not be detected.');
