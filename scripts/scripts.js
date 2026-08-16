@@ -49,6 +49,20 @@ async function loadFonts() {
   }
 }
 
+function initSanity() {
+  const sidekick = document.querySelector('aem-sidekick');
+  if (!sidekick) {
+    document.addEventListener('sidekick-ready', initSanity, { once: true });
+    return;
+  }
+  sidekick.addEventListener('custom:sanity', async (event) => {
+    const { mount } = await import('../tools/sanity/index.js');
+    mount(event.detail);
+  });
+}
+
+initSanity();
+
 /**
  * Turns `/widgets/...` links into widget blocks.
  * @param {Element} main The container element
